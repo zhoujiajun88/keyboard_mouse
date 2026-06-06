@@ -1,0 +1,46 @@
+# Visual Studio build output
+.vs/
+Debug/
+Release/
+x64/
+x86/
+ARM/
+ARM64/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# MSBuild intermediate output
+Keyboard.A4B55E1D/
+*.obj
+*.res
+*.tlog
+*.lastbuildstate
+*.idb
+*.pdb
+*.ilk
+*.iobj
+*.ipdb
+*.recipe
+*.log
+
+# Build artifacts
+*.exe
+*.dll
+*.lib
+*.exp
+
+# Local runtime/config files
+config.ini
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# OS/editor noise
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
