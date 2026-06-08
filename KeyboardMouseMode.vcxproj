@@ -69,12 +69,18 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\config.cpp" />
+    <ClCompile Include="src\dpi.cpp" />
+    <ClCompile Include="src\localization.cpp" />
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="src\app.rc" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\config.h" />
+    <ClInclude Include="src\dpi.h" />
+    <ClInclude Include="src\localization.h" />
     <ClInclude Include="src\resource.h" />
   </ItemGroup>
   <ItemGroup>

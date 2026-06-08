@@ -2,7 +2,7 @@
 
 KeyboardMouseMode is a Windows tray utility for controlling the mouse with the keyboard.
 
-Version: `1.1`
+Version: `1.2`
 
 ## Features
 

@@ -3,6 +3,9 @@
 #include <shlobj.h>
 #include <commctrl.h>
 
+#include "config.h"
+#include "dpi.h"
+#include "localization.h"
 #include "resource.h"
 
 #include <algorithm>
@@ -17,12 +20,10 @@
 namespace {
 
 constexpr wchar_t kAppName[] = L"KeyboardMouseMode";
-constexpr wchar_t kAppVersion[] = L"1.1";
+constexpr wchar_t kAppVersion[] = L"1.2";
 constexpr wchar_t kMainWindowClass[] = L"KeyboardMouseModeWindow";
 constexpr wchar_t kToastWindowClass[] = L"KeyboardMouseModeToast";
 constexpr wchar_t kSettingsWindowClass[] = L"KeyboardMouseModeSettings";
-constexpr wchar_t kRunRegistryPath[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-
 constexpr UINT kHotkeyId = 1;
 constexpr UINT kTrayMessage = WM_APP + 1;
 constexpr UINT kMoveTimerId = 10;
@@ -58,115 +59,6 @@ constexpr SpeedCurvePoint kSpeedCurve[] = {
 };
 constexpr size_t kSpeedCurveCount = sizeof(kSpeedCurve) / sizeof(kSpeedCurve[0]);
 
-struct Config {
-    int move_speed_px_per_sec = 800;
-    bool startup_enabled = false;
-    int language = 0;
-};
-
-struct LocalizedStrings {
-    const wchar_t* toggle_on;
-    const wchar_t* toggle_off;
-    const wchar_t* settings;
-    const wchar_t* startup;
-    const wchar_t* language;
-    const wchar_t* exit;
-    const wchar_t* tip_on;
-    const wchar_t* tip_off;
-    const wchar_t* toast_on;
-    const wchar_t* toast_off;
-    const wchar_t* settings_title;
-    const wchar_t* speed_label;
-    const wchar_t* startup_label;
-    const wchar_t* version_label;
-    const wchar_t* usage_text;
-    const wchar_t* save;
-    const wchar_t* cancel;
-};
-
-const LocalizedStrings& TextForLanguage(int language) {
-    static const LocalizedStrings zh_hans{
-        L"开启鼠标模式",
-        L"关闭鼠标模式",
-        L"设置...",
-        L"开机自启动",
-        L"语言",
-        L"退出",
-        L"键盘鼠标模式：开启",
-        L"键盘鼠标模式：关闭",
-        L"鼠标模式开启",
-        L"鼠标模式关闭",
-        L"键盘鼠标模式设置 v1.1",
-        L"鼠标移动速度 (px/s)：",
-        L"开机自启动",
-        L"版本：1.1",
-        L"使用说明：\r\n"
-        L"Ctrl + Alt + M：开启 / 关闭鼠标模式\r\n"
-        L"Esc：关闭鼠标模式\r\n"
-        L"W / A / S / D：移动鼠标光标\r\n"
-        L"J / K：鼠标左键 / 右键\r\n"
-        L"方向键：模拟垂直 / 水平滚轮",
-        L"保存",
-        L"取消",
-    };
-    static const LocalizedStrings zh_hant{
-        L"開啟滑鼠模式",
-        L"關閉滑鼠模式",
-        L"設定...",
-        L"開機自動啟動",
-        L"語言",
-        L"結束",
-        L"鍵盤滑鼠模式：開啟",
-        L"鍵盤滑鼠模式：關閉",
-        L"滑鼠模式開啟",
-        L"滑鼠模式關閉",
-        L"鍵盤滑鼠模式設定 v1.1",
-        L"滑鼠移動速度 (px/s)：",
-        L"開機自動啟動",
-        L"版本：1.1",
-        L"使用說明：\r\n"
-        L"Ctrl + Alt + M：開啟 / 關閉滑鼠模式\r\n"
-        L"Esc：關閉滑鼠模式\r\n"
-        L"W / A / S / D：移動滑鼠游標\r\n"
-        L"J / K：滑鼠左鍵 / 右鍵\r\n"
-        L"方向鍵：模擬垂直 / 水平滾輪",
-        L"儲存",
-        L"取消",
-    };
-    static const LocalizedStrings en{
-        L"Turn mouse mode on",
-        L"Turn mouse mode off",
-        L"Settings...",
-        L"Start with Windows",
-        L"Language",
-        L"Exit",
-        L"Keyboard mouse mode: on",
-        L"Keyboard mouse mode: off",
-        L"Mouse mode on",
-        L"Mouse mode off",
-        L"Keyboard Mouse Mode Settings v1.1",
-        L"Mouse speed (px/s):",
-        L"Start with Windows",
-        L"Version: 1.1",
-        L"Usage:\r\n"
-        L"Ctrl + Alt + M: turn mouse mode on / off\r\n"
-        L"Esc: turn mouse mode off\r\n"
-        L"W / A / S / D: move cursor\r\n"
-        L"J / K: left / right mouse button\r\n"
-        L"Arrow keys: vertical / horizontal scrolling",
-        L"Save",
-        L"Cancel",
-    };
-
-    if (language == 1) {
-        return zh_hant;
-    }
-    if (language == 2) {
-        return en;
-    }
-    return zh_hans;
-}
-
 struct KeyState {
     bool w = false;
     bool a = false;
@@ -183,7 +75,7 @@ HWND g_settings_window = nullptr;
 HHOOK g_keyboard_hook = nullptr;
 HANDLE g_single_instance_mutex = nullptr;
 HFONT g_default_gui_font = nullptr;
-Config g_config;
+AppConfig g_config;
 KeyState g_keys;
 bool g_mouse_mode_enabled = false;
 bool g_startup_failed = false;
@@ -197,78 +89,7 @@ UINT g_toast_dpi = 96;
 std::wstring g_toast_text;
 
 const LocalizedStrings& Text() {
-    return TextForLanguage(g_config.language);
-}
-
-void EnableDpiAwareness() {
-    HMODULE user32 = GetModuleHandleW(L"user32.dll");
-    if (user32) {
-        using SetDpiAwarenessContextFn = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT);
-        auto set_context = reinterpret_cast<SetDpiAwarenessContextFn>(
-            GetProcAddress(user32, "SetProcessDpiAwarenessContext"));
-        if (set_context && set_context(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
-            return;
-        }
-    }
-    SetProcessDPIAware();
-}
-
-UINT DpiForWindowOrSystem(HWND hwnd) {
-    HMODULE user32 = GetModuleHandleW(L"user32.dll");
-    if (user32) {
-        using GetDpiForWindowFn = UINT(WINAPI*)(HWND);
-        auto get_dpi_for_window = reinterpret_cast<GetDpiForWindowFn>(GetProcAddress(user32, "GetDpiForWindow"));
-        if (get_dpi_for_window && hwnd) {
-            return get_dpi_for_window(hwnd);
-        }
-
-        using GetDpiForSystemFn = UINT(WINAPI*)();
-        auto get_dpi_for_system = reinterpret_cast<GetDpiForSystemFn>(GetProcAddress(user32, "GetDpiForSystem"));
-        if (get_dpi_for_system) {
-            return get_dpi_for_system();
-        }
-    }
-    return 96;
-}
-
-int ScaleForDpi(int value, UINT dpi) {
-    return MulDiv(value, static_cast<int>(dpi), 96);
-}
-
-HFONT CreateUiFontForDpi(UINT dpi) {
-    NONCLIENTMETRICSW metrics{};
-    metrics.cbSize = sizeof(metrics);
-    if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, metrics.cbSize, &metrics, 0)) {
-        metrics.lfMessageFont.lfHeight = -MulDiv(11, static_cast<int>(dpi), 72);
-        metrics.lfMessageFont.lfWeight = FW_MEDIUM;
-        return CreateFontIndirectW(&metrics.lfMessageFont);
-    }
-    return reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-}
-
-int DetectDefaultLanguage() {
-    wchar_t locale_name[LOCALE_NAME_MAX_LENGTH]{};
-    if (GetUserDefaultLocaleName(locale_name, LOCALE_NAME_MAX_LENGTH) > 0) {
-        if (_wcsicmp(locale_name, L"zh-CN") == 0 || _wcsicmp(locale_name, L"zh-SG") == 0) {
-            return 0;
-        }
-        if (_wcsicmp(locale_name, L"zh-TW") == 0 || _wcsicmp(locale_name, L"zh-HK") == 0 ||
-            _wcsicmp(locale_name, L"zh-MO") == 0) {
-            return 1;
-        }
-    }
-
-    const LANGID language_id = GetUserDefaultUILanguage();
-    if (PRIMARYLANGID(language_id) == LANG_CHINESE) {
-        const WORD sub_language = SUBLANGID(language_id);
-        if (sub_language == SUBLANG_CHINESE_TRADITIONAL || sub_language == SUBLANG_CHINESE_HONGKONG ||
-            sub_language == SUBLANG_CHINESE_MACAU) {
-            return 1;
-        }
-        return 0;
-    }
-
-    return 2;
+    return Localization::Text(g_config.language);
 }
 
 HMENU ControlId(int id) {
@@ -313,110 +134,6 @@ HWND CreateSettingsControl(
         SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(g_default_gui_font), TRUE);
     }
     return control;
-}
-
-std::wstring GetExePath() {
-    wchar_t buffer[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return buffer;
-}
-
-std::wstring GetConfigDir() {
-    PWSTR app_data = nullptr;
-    std::wstring result;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &app_data))) {
-        result = app_data;
-        CoTaskMemFree(app_data);
-        result += L"\\KeyboardMouseMode";
-    }
-    return result;
-}
-
-std::wstring GetConfigPath() {
-    const std::wstring dir = GetConfigDir();
-    if (dir.empty()) {
-        return L"config.ini";
-    }
-    CreateDirectoryW(dir.c_str(), nullptr);
-    return dir + L"\\config.ini";
-}
-
-bool IsStartupEnabled() {
-    HKEY key = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunRegistryPath, 0, KEY_READ, &key) != ERROR_SUCCESS) {
-        return false;
-    }
-
-    wchar_t value[MAX_PATH]{};
-    DWORD type = REG_SZ;
-    DWORD size = sizeof(value);
-    const LONG status = RegQueryValueExW(key, kAppName, nullptr, &type, reinterpret_cast<BYTE*>(value), &size);
-    RegCloseKey(key);
-
-    if (status != ERROR_SUCCESS || type != REG_SZ) {
-        return false;
-    }
-
-    return _wcsicmp(value, GetExePath().c_str()) == 0;
-}
-
-bool SetStartupEnabled(bool enabled) {
-    HKEY key = nullptr;
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, kRunRegistryPath, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
-        return false;
-    }
-
-    LONG status = ERROR_SUCCESS;
-    if (enabled) {
-        const std::wstring path = GetExePath();
-        status = RegSetValueExW(key, kAppName, 0, REG_SZ, reinterpret_cast<const BYTE*>(path.c_str()),
-                                static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)));
-    } else {
-        status = RegDeleteValueW(key, kAppName);
-        if (status == ERROR_FILE_NOT_FOUND) {
-            status = ERROR_SUCCESS;
-        }
-    }
-    RegCloseKey(key);
-    return status == ERROR_SUCCESS;
-}
-
-void SaveConfig() {
-    const std::wstring path = GetConfigPath();
-    WritePrivateProfileStringW(L"settings", L"move_speed_px_per_sec",
-                               std::to_wstring(g_config.move_speed_px_per_sec).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"settings", L"startup_enabled",
-                               g_config.startup_enabled ? L"true" : L"false", path.c_str());
-    const wchar_t* language = L"zh-Hans";
-    if (g_config.language == 1) {
-        language = L"zh-Hant";
-    } else if (g_config.language == 2) {
-        language = L"en";
-    }
-    WritePrivateProfileStringW(L"settings", L"language", language, path.c_str());
-}
-
-void LoadConfig() {
-    const std::wstring path = GetConfigPath();
-    g_config.move_speed_px_per_sec = std::clamp(
-        static_cast<int>(GetPrivateProfileIntW(L"settings", L"move_speed_px_per_sec", 800, path.c_str())),
-        100,
-        3000);
-
-    wchar_t language[32]{};
-    GetPrivateProfileStringW(L"settings", L"language", L"", language, 32, path.c_str());
-    if (_wcsicmp(language, L"zh-Hant") == 0) {
-        g_config.language = 1;
-    } else if (_wcsicmp(language, L"en") == 0) {
-        g_config.language = 2;
-    } else if (_wcsicmp(language, L"zh-Hans") == 0) {
-        g_config.language = 0;
-    } else {
-        g_config.language = DetectDefaultLanguage();
-    }
-
-    g_config.startup_enabled = IsStartupEnabled();
-    SaveConfig();
 }
 
 void ResetInputState() {
@@ -528,14 +245,13 @@ void ToggleMouseMode() {
     SetMouseMode(!g_mouse_mode_enabled);
 }
 
-void SetLanguage(int language) {
-    language = std::clamp(language, 0, 2);
+void SetLanguage(Language language) {
     if (g_config.language == language) {
         return;
     }
 
     g_config.language = language;
-    SaveConfig();
+    ConfigManager::Save(g_config);
     UpdateTrayIcon();
     if (g_settings_window) {
         DestroyWindow(g_settings_window);
@@ -749,9 +465,9 @@ void ShowTrayMenu() {
     AppendMenuW(menu, MF_STRING, kMenuToggle, g_mouse_mode_enabled ? Text().toggle_off : Text().toggle_on);
     AppendMenuW(menu, MF_STRING, kMenuSettings, Text().settings);
     AppendMenuW(menu, MF_STRING | (g_config.startup_enabled ? MF_CHECKED : MF_UNCHECKED), kMenuStartup, Text().startup);
-    AppendMenuW(language_menu, MF_STRING | (g_config.language == 0 ? MF_CHECKED : MF_UNCHECKED), kMenuLanguageZhHans, L"简体中文");
-    AppendMenuW(language_menu, MF_STRING | (g_config.language == 1 ? MF_CHECKED : MF_UNCHECKED), kMenuLanguageZhHant, L"繁體中文");
-    AppendMenuW(language_menu, MF_STRING | (g_config.language == 2 ? MF_CHECKED : MF_UNCHECKED), kMenuLanguageEn, L"English");
+    AppendMenuW(language_menu, MF_STRING | (g_config.language == Language::SimplifiedChinese ? MF_CHECKED : MF_UNCHECKED), kMenuLanguageZhHans, L"简体中文");
+    AppendMenuW(language_menu, MF_STRING | (g_config.language == Language::TraditionalChinese ? MF_CHECKED : MF_UNCHECKED), kMenuLanguageZhHant, L"繁體中文");
+    AppendMenuW(language_menu, MF_STRING | (g_config.language == Language::English ? MF_CHECKED : MF_UNCHECKED), kMenuLanguageEn, L"English");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(language_menu), Text().language);
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kMenuExit, Text().exit);
@@ -777,7 +493,7 @@ LRESULT CALLBACK ToastWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpa
 
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, RGB(255, 255, 255));
-        HFONT font = CreateFontW(ScaleForDpi(28, g_toast_dpi), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        HFONT font = CreateFontW(Dpi::Scale(28, g_toast_dpi), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                                  OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                  DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
         HFONT old_font = reinterpret_cast<HFONT>(SelectObject(hdc, font));
@@ -801,11 +517,11 @@ void ShowToast(const wchar_t* text) {
     }
 
     HMONITOR monitor = MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTONEAREST);
-    g_toast_dpi = DpiForWindowOrSystem(GetForegroundWindow());
+    g_toast_dpi = Dpi::ForWindowOrSystem(GetForegroundWindow());
     MONITORINFO info{sizeof(info)};
     GetMonitorInfoW(monitor, &info);
-    const int width = ScaleForDpi(280, g_toast_dpi);
-    const int height = ScaleForDpi(88, g_toast_dpi);
+    const int width = Dpi::Scale(280, g_toast_dpi);
+    const int height = Dpi::Scale(88, g_toast_dpi);
     const int x = info.rcWork.left + ((info.rcWork.right - info.rcWork.left) - width) / 2;
     const int y = info.rcWork.top + ((info.rcWork.bottom - info.rcWork.top) - height) / 2;
     SetWindowPos(g_toast_window, HWND_TOPMOST, x, y, width, height, SWP_SHOWWINDOW | SWP_NOACTIVATE);
@@ -818,37 +534,37 @@ void EnsureSettingsWindow();
 LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
     case WM_CREATE: {
-        const UINT dpi = DpiForWindowOrSystem(hwnd);
+        const UINT dpi = Dpi::ForWindowOrSystem(hwnd);
         CreateSettingsControl(0, L"STATIC", Text().speed_label, 0,
-                              ScaleForDpi(20, dpi), ScaleForDpi(22, dpi), ScaleForDpi(160, dpi), ScaleForDpi(24, dpi), hwnd);
+                              Dpi::Scale(24, dpi), Dpi::Scale(24, dpi), Dpi::Scale(250, dpi), Dpi::Scale(28, dpi), hwnd);
 
         HWND edit = CreateSettingsControl(WS_EX_CLIENTEDGE, L"EDIT", L"", ES_NUMBER | ES_AUTOHSCROLL,
-                                          ScaleForDpi(185, dpi), ScaleForDpi(18, dpi), ScaleForDpi(120, dpi), ScaleForDpi(28, dpi), hwnd, kEditSpeedId);
+                                          Dpi::Scale(300, dpi), Dpi::Scale(20, dpi), Dpi::Scale(150, dpi), Dpi::Scale(32, dpi), hwnd, kEditSpeedId);
         std::wstring speed = std::to_wstring(g_config.move_speed_px_per_sec);
         SetWindowTextW(edit, speed.c_str());
 
         HWND check = CreateSettingsControl(0, L"BUTTON", Text().startup_label, BS_AUTOCHECKBOX,
-                                           ScaleForDpi(20, dpi), ScaleForDpi(62, dpi), ScaleForDpi(180, dpi), ScaleForDpi(24, dpi), hwnd, kCheckStartupId);
+                                           Dpi::Scale(24, dpi), Dpi::Scale(72, dpi), Dpi::Scale(320, dpi), Dpi::Scale(30, dpi), hwnd, kCheckStartupId);
         SendMessageW(check, BM_SETCHECK, g_config.startup_enabled ? BST_CHECKED : BST_UNCHECKED, 0);
 
         CreateSettingsControl(0, L"STATIC", Text().version_label, 0,
-                              ScaleForDpi(20, dpi), ScaleForDpi(98, dpi), ScaleForDpi(260, dpi), ScaleForDpi(22, dpi), hwnd);
+                              Dpi::Scale(24, dpi), Dpi::Scale(118, dpi), Dpi::Scale(420, dpi), Dpi::Scale(28, dpi), hwnd);
 
         CreateSettingsControl(
             0,
             L"STATIC",
             Text().usage_text,
             SS_LEFT,
-            ScaleForDpi(20, dpi),
-            ScaleForDpi(130, dpi),
-            ScaleForDpi(300, dpi),
-            ScaleForDpi(110, dpi),
+            Dpi::Scale(24, dpi),
+            Dpi::Scale(158, dpi),
+            Dpi::Scale(470, dpi),
+            Dpi::Scale(170, dpi),
             hwnd);
 
         CreateSettingsControl(0, L"BUTTON", Text().save, BS_DEFPUSHBUTTON,
-                              ScaleForDpi(140, dpi), ScaleForDpi(256, dpi), ScaleForDpi(80, dpi), ScaleForDpi(30, dpi), hwnd, kButtonSaveId);
+                              Dpi::Scale(305, dpi), Dpi::Scale(360, dpi), Dpi::Scale(90, dpi), Dpi::Scale(34, dpi), hwnd, kButtonSaveId);
         CreateSettingsControl(0, L"BUTTON", Text().cancel, 0,
-                              ScaleForDpi(235, dpi), ScaleForDpi(256, dpi), ScaleForDpi(80, dpi), ScaleForDpi(30, dpi), hwnd, kButtonCancelId);
+                              Dpi::Scale(410, dpi), Dpi::Scale(360, dpi), Dpi::Scale(90, dpi), Dpi::Scale(34, dpi), hwnd, kButtonCancelId);
         return 0;
     }
     case WM_COMMAND: {
@@ -860,10 +576,10 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
             speed = std::clamp(speed, 100, 3000);
             const bool startup = SendDlgItemMessageW(hwnd, kCheckStartupId, BM_GETCHECK, 0, 0) == BST_CHECKED;
             g_config.move_speed_px_per_sec = speed;
-            if (SetStartupEnabled(startup)) {
+            if (ConfigManager::SetStartupEnabled(startup)) {
                 g_config.startup_enabled = startup;
             }
-            SaveConfig();
+            ConfigManager::Save(g_config);
             UpdateTrayIcon();
             DestroyWindow(hwnd);
             return 0;
@@ -906,9 +622,9 @@ void EnsureSettingsWindow() {
         return;
     }
 
-    const UINT dpi = DpiForWindowOrSystem(nullptr);
-    const int window_width = ScaleForDpi(360, dpi);
-    const int window_height = ScaleForDpi(335, dpi);
+    const UINT dpi = Dpi::ForWindowOrSystem(nullptr);
+    const int window_width = Dpi::Scale(540, dpi);
+    const int window_height = Dpi::Scale(455, dpi);
     g_settings_window = CreateWindowExW(WS_EX_TOOLWINDOW, kSettingsWindowClass, Text().settings_title,
                                         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
                                         CW_USEDEFAULT, CW_USEDEFAULT, window_width, window_height,
@@ -978,20 +694,20 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
             return 0;
         case kMenuStartup: {
             const bool next = !g_config.startup_enabled;
-            if (SetStartupEnabled(next)) {
+            if (ConfigManager::SetStartupEnabled(next)) {
                 g_config.startup_enabled = next;
-                SaveConfig();
+                ConfigManager::Save(g_config);
             }
             return 0;
         }
         case kMenuLanguageZhHans:
-            SetLanguage(0);
+            SetLanguage(Language::SimplifiedChinese);
             return 0;
         case kMenuLanguageZhHant:
-            SetLanguage(1);
+            SetLanguage(Language::TraditionalChinese);
             return 0;
         case kMenuLanguageEn:
-            SetLanguage(2);
+            SetLanguage(Language::English);
             return 0;
         case kMenuExit:
             DestroyWindow(hwnd);
@@ -1063,7 +779,7 @@ bool IsAlreadyRunning() {
 
 int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     g_instance = instance;
-    EnableDpiAwareness();
+    Dpi::EnableAwareness();
 
     if (IsAlreadyRunning()) {
         MessageBoxW(nullptr, L"键盘鼠标模式已经在运行。", kAppName, MB_OK | MB_ICONINFORMATION);
@@ -1074,9 +790,9 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     icc.dwSize = sizeof(icc);
     icc.dwICC = ICC_STANDARD_CLASSES;
     InitCommonControlsEx(&icc);
-    g_default_gui_font = CreateUiFontForDpi(DpiForWindowOrSystem(nullptr));
+    g_default_gui_font = Dpi::CreateUiFont(Dpi::ForWindowOrSystem(nullptr));
 
-    LoadConfig();
+    g_config = ConfigManager::Load();
 
     if (!RegisterWindowClasses()) {
         MessageBoxW(nullptr, L"窗口类注册失败。", kAppName, MB_OK | MB_ICONERROR);
