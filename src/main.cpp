@@ -17,7 +17,7 @@
 namespace {
 
 constexpr wchar_t kAppName[] = L"KeyboardMouseMode";
-constexpr wchar_t kAppVersion[] = L"1.0";
+constexpr wchar_t kAppVersion[] = L"1.1";
 constexpr wchar_t kMainWindowClass[] = L"KeyboardMouseModeWindow";
 constexpr wchar_t kToastWindowClass[] = L"KeyboardMouseModeToast";
 constexpr wchar_t kSettingsWindowClass[] = L"KeyboardMouseModeSettings";
@@ -33,6 +33,9 @@ constexpr UINT kMenuToggle = 2001;
 constexpr UINT kMenuSettings = 2002;
 constexpr UINT kMenuStartup = 2003;
 constexpr UINT kMenuExit = 2004;
+constexpr UINT kMenuLanguageZhHans = 2010;
+constexpr UINT kMenuLanguageZhHant = 2011;
+constexpr UINT kMenuLanguageEn = 2012;
 
 constexpr int kEditSpeedId = 3001;
 constexpr int kCheckStartupId = 3002;
@@ -58,7 +61,111 @@ constexpr size_t kSpeedCurveCount = sizeof(kSpeedCurve) / sizeof(kSpeedCurve[0])
 struct Config {
     int move_speed_px_per_sec = 800;
     bool startup_enabled = false;
+    int language = 0;
 };
+
+struct LocalizedStrings {
+    const wchar_t* toggle_on;
+    const wchar_t* toggle_off;
+    const wchar_t* settings;
+    const wchar_t* startup;
+    const wchar_t* language;
+    const wchar_t* exit;
+    const wchar_t* tip_on;
+    const wchar_t* tip_off;
+    const wchar_t* toast_on;
+    const wchar_t* toast_off;
+    const wchar_t* settings_title;
+    const wchar_t* speed_label;
+    const wchar_t* startup_label;
+    const wchar_t* version_label;
+    const wchar_t* usage_text;
+    const wchar_t* save;
+    const wchar_t* cancel;
+};
+
+const LocalizedStrings& TextForLanguage(int language) {
+    static const LocalizedStrings zh_hans{
+        L"开启鼠标模式",
+        L"关闭鼠标模式",
+        L"设置...",
+        L"开机自启动",
+        L"语言",
+        L"退出",
+        L"键盘鼠标模式：开启",
+        L"键盘鼠标模式：关闭",
+        L"鼠标模式开启",
+        L"鼠标模式关闭",
+        L"键盘鼠标模式设置 v1.1",
+        L"鼠标移动速度 (px/s)：",
+        L"开机自启动",
+        L"版本：1.1",
+        L"使用说明：\r\n"
+        L"Ctrl + Alt + M：开启 / 关闭鼠标模式\r\n"
+        L"Esc：关闭鼠标模式\r\n"
+        L"W / A / S / D：移动鼠标光标\r\n"
+        L"J / K：鼠标左键 / 右键\r\n"
+        L"方向键：模拟垂直 / 水平滚轮",
+        L"保存",
+        L"取消",
+    };
+    static const LocalizedStrings zh_hant{
+        L"開啟滑鼠模式",
+        L"關閉滑鼠模式",
+        L"設定...",
+        L"開機自動啟動",
+        L"語言",
+        L"結束",
+        L"鍵盤滑鼠模式：開啟",
+        L"鍵盤滑鼠模式：關閉",
+        L"滑鼠模式開啟",
+        L"滑鼠模式關閉",
+        L"鍵盤滑鼠模式設定 v1.1",
+        L"滑鼠移動速度 (px/s)：",
+        L"開機自動啟動",
+        L"版本：1.1",
+        L"使用說明：\r\n"
+        L"Ctrl + Alt + M：開啟 / 關閉滑鼠模式\r\n"
+        L"Esc：關閉滑鼠模式\r\n"
+        L"W / A / S / D：移動滑鼠游標\r\n"
+        L"J / K：滑鼠左鍵 / 右鍵\r\n"
+        L"方向鍵：模擬垂直 / 水平滾輪",
+        L"儲存",
+        L"取消",
+    };
+    static const LocalizedStrings en{
+        L"Turn mouse mode on",
+        L"Turn mouse mode off",
+        L"Settings...",
+        L"Start with Windows",
+        L"Language",
+        L"Exit",
+        L"Keyboard mouse mode: on",
+        L"Keyboard mouse mode: off",
+        L"Mouse mode on",
+        L"Mouse mode off",
+        L"Keyboard Mouse Mode Settings v1.1",
+        L"Mouse speed (px/s):",
+        L"Start with Windows",
+        L"Version: 1.1",
+        L"Usage:\r\n"
+        L"Ctrl + Alt + M: turn mouse mode on / off\r\n"
+        L"Esc: turn mouse mode off\r\n"
+        L"W / A / S / D: move cursor\r\n"
+        L"J / K: left / right mouse button\r\n"
+        L"Arrow keys: vertical / horizontal scrolling",
+        L"Save",
+        L"Cancel",
+    };
+
+    if (language == 1) {
+        return zh_hant;
+    }
+    if (language == 2) {
+        return en;
+    }
+    return zh_hans;
+}
 
 struct KeyState {
     bool w = false;
@@ -86,7 +193,83 @@ double g_remainder_x = 0.0;
 double g_remainder_y = 0.0;
 int g_last_dir_x = 0;
 int g_last_dir_y = 0;
+UINT g_toast_dpi = 96;
 std::wstring g_toast_text;
+
+const LocalizedStrings& Text() {
+    return TextForLanguage(g_config.language);
+}
+
+void EnableDpiAwareness() {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (user32) {
+        using SetDpiAwarenessContextFn = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT);
+        auto set_context = reinterpret_cast<SetDpiAwarenessContextFn>(
+            GetProcAddress(user32, "SetProcessDpiAwarenessContext"));
+        if (set_context && set_context(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
+            return;
+        }
+    }
+    SetProcessDPIAware();
+}
+
+UINT DpiForWindowOrSystem(HWND hwnd) {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (user32) {
+        using GetDpiForWindowFn = UINT(WINAPI*)(HWND);
+        auto get_dpi_for_window = reinterpret_cast<GetDpiForWindowFn>(GetProcAddress(user32, "GetDpiForWindow"));
+        if (get_dpi_for_window && hwnd) {
+            return get_dpi_for_window(hwnd);
+        }
+
+        using GetDpiForSystemFn = UINT(WINAPI*)();
+        auto get_dpi_for_system = reinterpret_cast<GetDpiForSystemFn>(GetProcAddress(user32, "GetDpiForSystem"));
+        if (get_dpi_for_system) {
+            return get_dpi_for_system();
+        }
+    }
+    return 96;
+}
+
+int ScaleForDpi(int value, UINT dpi) {
+    return MulDiv(value, static_cast<int>(dpi), 96);
+}
+
+HFONT CreateUiFontForDpi(UINT dpi) {
+    NONCLIENTMETRICSW metrics{};
+    metrics.cbSize = sizeof(metrics);
+    if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, metrics.cbSize, &metrics, 0)) {
+        metrics.lfMessageFont.lfHeight = -MulDiv(11, static_cast<int>(dpi), 72);
+        metrics.lfMessageFont.lfWeight = FW_MEDIUM;
+        return CreateFontIndirectW(&metrics.lfMessageFont);
+    }
+    return reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+}
+
+int DetectDefaultLanguage() {
+    wchar_t locale_name[LOCALE_NAME_MAX_LENGTH]{};
+    if (GetUserDefaultLocaleName(locale_name, LOCALE_NAME_MAX_LENGTH) > 0) {
+        if (_wcsicmp(locale_name, L"zh-CN") == 0 || _wcsicmp(locale_name, L"zh-SG") == 0) {
+            return 0;
+        }
+        if (_wcsicmp(locale_name, L"zh-TW") == 0 || _wcsicmp(locale_name, L"zh-HK") == 0 ||
+            _wcsicmp(locale_name, L"zh-MO") == 0) {
+            return 1;
+        }
+    }
+
+    const LANGID language_id = GetUserDefaultUILanguage();
+    if (PRIMARYLANGID(language_id) == LANG_CHINESE) {
+        const WORD sub_language = SUBLANGID(language_id);
+        if (sub_language == SUBLANG_CHINESE_TRADITIONAL || sub_language == SUBLANG_CHINESE_HONGKONG ||
+            sub_language == SUBLANG_CHINESE_MACAU) {
+            return 1;
+        }
+        return 0;
+    }
+
+    return 2;
+}
 
 HMENU ControlId(int id) {
     return reinterpret_cast<HMENU>(static_cast<INT_PTR>(id));
@@ -204,6 +387,13 @@ void SaveConfig() {
                                std::to_wstring(g_config.move_speed_px_per_sec).c_str(), path.c_str());
     WritePrivateProfileStringW(L"settings", L"startup_enabled",
                                g_config.startup_enabled ? L"true" : L"false", path.c_str());
+    const wchar_t* language = L"zh-Hans";
+    if (g_config.language == 1) {
+        language = L"zh-Hant";
+    } else if (g_config.language == 2) {
+        language = L"en";
+    }
+    WritePrivateProfileStringW(L"settings", L"language", language, path.c_str());
 }
 
 void LoadConfig() {
@@ -212,6 +402,18 @@ void LoadConfig() {
         static_cast<int>(GetPrivateProfileIntW(L"settings", L"move_speed_px_per_sec", 800, path.c_str())),
         100,
         3000);
+
+    wchar_t language[32]{};
+    GetPrivateProfileStringW(L"settings", L"language", L"", language, 32, path.c_str());
+    if (_wcsicmp(language, L"zh-Hant") == 0) {
+        g_config.language = 1;
+    } else if (_wcsicmp(language, L"en") == 0) {
+        g_config.language = 2;
+    } else if (_wcsicmp(language, L"zh-Hans") == 0) {
+        g_config.language = 0;
+    } else {
+        g_config.language = DetectDefaultLanguage();
+    }
 
     g_config.startup_enabled = IsStartupEnabled();
     SaveConfig();
@@ -295,6 +497,7 @@ void NudgeMouseForNewMoveGesture() {
 
 void ShowToast(const wchar_t* text);
 void UpdateTrayIcon();
+void EnsureSettingsWindow();
 
 void ReleasePressedMouseButtons() {
     if (g_keys.j) {
@@ -317,12 +520,27 @@ void SetMouseMode(bool enabled, bool show_toast = true) {
     ResetInputState();
     UpdateTrayIcon();
     if (show_toast) {
-        ShowToast(enabled ? L"鼠标模式开启" : L"鼠标模式关闭");
+        ShowToast(enabled ? Text().toast_on : Text().toast_off);
     }
 }
 
 void ToggleMouseMode() {
     SetMouseMode(!g_mouse_mode_enabled);
+}
+
+void SetLanguage(int language) {
+    language = std::clamp(language, 0, 2);
+    if (g_config.language == language) {
+        return;
+    }
+
+    g_config.language = language;
+    SaveConfig();
+    UpdateTrayIcon();
+    if (g_settings_window) {
+        DestroyWindow(g_settings_window);
+        EnsureSettingsWindow();
+    }
 }
 
 bool IsMappedKey(DWORD vk) {
@@ -493,7 +711,7 @@ void UpdateTrayIcon() {
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid.uCallbackMessage = kTrayMessage;
     nid.hIcon = LoadAppIcon(g_mouse_mode_enabled ? IDI_TRAY_ON : IDI_TRAY_OFF, GetSystemMetrics(SM_CXSMICON));
-    wcscpy_s(nid.szTip, g_mouse_mode_enabled ? L"键盘鼠标模式：开启" : L"键盘鼠标模式：关闭");
+    wcscpy_s(nid.szTip, g_mouse_mode_enabled ? Text().tip_on : Text().tip_off);
     Shell_NotifyIconW(NIM_MODIFY, &nid);
 }
 
@@ -505,7 +723,7 @@ void AddTrayIcon() {
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid.uCallbackMessage = kTrayMessage;
     nid.hIcon = LoadAppIcon(IDI_TRAY_OFF, GetSystemMetrics(SM_CXSMICON));
-    wcscpy_s(nid.szTip, L"键盘鼠标模式：关闭");
+    wcscpy_s(nid.szTip, Text().tip_off);
     Shell_NotifyIconW(NIM_ADD, &nid);
 }
 
@@ -522,12 +740,21 @@ void ShowTrayMenu() {
     if (!menu) {
         return;
     }
+    HMENU language_menu = CreatePopupMenu();
+    if (!language_menu) {
+        DestroyMenu(menu);
+        return;
+    }
 
-    AppendMenuW(menu, MF_STRING, kMenuToggle, g_mouse_mode_enabled ? L"关闭鼠标模式" : L"开启鼠标模式");
-    AppendMenuW(menu, MF_STRING, kMenuSettings, L"设置...");
-    AppendMenuW(menu, MF_STRING | (g_config.startup_enabled ? MF_CHECKED : MF_UNCHECKED), kMenuStartup, L"开机自启动");
+    AppendMenuW(menu, MF_STRING, kMenuToggle, g_mouse_mode_enabled ? Text().toggle_off : Text().toggle_on);
+    AppendMenuW(menu, MF_STRING, kMenuSettings, Text().settings);
+    AppendMenuW(menu, MF_STRING | (g_config.startup_enabled ? MF_CHECKED : MF_UNCHECKED), kMenuStartup, Text().startup);
+    AppendMenuW(language_menu, MF_STRING | (g_config.language == 0 ? MF_CHECKED : MF_UNCHECKED), kMenuLanguageZhHans, L"简体中文");
+    AppendMenuW(language_menu, MF_STRING | (g_config.language == 1 ? MF_CHECKED : MF_UNCHECKED), kMenuLanguageZhHant, L"繁體中文");
+    AppendMenuW(language_menu, MF_STRING | (g_config.language == 2 ? MF_CHECKED : MF_UNCHECKED), kMenuLanguageEn, L"English");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(language_menu), Text().language);
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, kMenuExit, L"退出");
+    AppendMenuW(menu, MF_STRING, kMenuExit, Text().exit);
 
     POINT pt{};
     GetCursorPos(&pt);
@@ -550,7 +777,7 @@ LRESULT CALLBACK ToastWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpa
 
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, RGB(255, 255, 255));
-        HFONT font = CreateFontW(28, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        HFONT font = CreateFontW(ScaleForDpi(28, g_toast_dpi), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                                  OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                  DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
         HFONT old_font = reinterpret_cast<HFONT>(SelectObject(hdc, font));
@@ -574,10 +801,11 @@ void ShowToast(const wchar_t* text) {
     }
 
     HMONITOR monitor = MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTONEAREST);
+    g_toast_dpi = DpiForWindowOrSystem(GetForegroundWindow());
     MONITORINFO info{sizeof(info)};
     GetMonitorInfoW(monitor, &info);
-    const int width = 280;
-    const int height = 88;
+    const int width = ScaleForDpi(280, g_toast_dpi);
+    const int height = ScaleForDpi(88, g_toast_dpi);
     const int x = info.rcWork.left + ((info.rcWork.right - info.rcWork.left) - width) / 2;
     const int y = info.rcWork.top + ((info.rcWork.bottom - info.rcWork.top) - height) / 2;
     SetWindowPos(g_toast_window, HWND_TOPMOST, x, y, width, height, SWP_SHOWWINDOW | SWP_NOACTIVATE);
@@ -590,41 +818,37 @@ void EnsureSettingsWindow();
 LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
     case WM_CREATE: {
-        CreateSettingsControl(0, L"STATIC", L"鼠标移动速度 (px/s)：", 0,
-                              20, 22, 160, 24, hwnd);
+        const UINT dpi = DpiForWindowOrSystem(hwnd);
+        CreateSettingsControl(0, L"STATIC", Text().speed_label, 0,
+                              ScaleForDpi(20, dpi), ScaleForDpi(22, dpi), ScaleForDpi(160, dpi), ScaleForDpi(24, dpi), hwnd);
 
         HWND edit = CreateSettingsControl(WS_EX_CLIENTEDGE, L"EDIT", L"", ES_NUMBER | ES_AUTOHSCROLL,
-                                          185, 18, 120, 28, hwnd, kEditSpeedId);
+                                          ScaleForDpi(185, dpi), ScaleForDpi(18, dpi), ScaleForDpi(120, dpi), ScaleForDpi(28, dpi), hwnd, kEditSpeedId);
         std::wstring speed = std::to_wstring(g_config.move_speed_px_per_sec);
         SetWindowTextW(edit, speed.c_str());
 
-        HWND check = CreateSettingsControl(0, L"BUTTON", L"开机自启动", BS_AUTOCHECKBOX,
-                                           20, 62, 180, 24, hwnd, kCheckStartupId);
+        HWND check = CreateSettingsControl(0, L"BUTTON", Text().startup_label, BS_AUTOCHECKBOX,
+                                           ScaleForDpi(20, dpi), ScaleForDpi(62, dpi), ScaleForDpi(180, dpi), ScaleForDpi(24, dpi), hwnd, kCheckStartupId);
         SendMessageW(check, BM_SETCHECK, g_config.startup_enabled ? BST_CHECKED : BST_UNCHECKED, 0);
 
-        CreateSettingsControl(0, L"STATIC", L"版本：1.0", 0,
-                              20, 98, 260, 22, hwnd);
+        CreateSettingsControl(0, L"STATIC", Text().version_label, 0,
+                              ScaleForDpi(20, dpi), ScaleForDpi(98, dpi), ScaleForDpi(260, dpi), ScaleForDpi(22, dpi), hwnd);
 
         CreateSettingsControl(
             0,
             L"STATIC",
-            L"使用说明：\r\n"
-            L"Ctrl + Alt + M：开启 / 关闭鼠标模式\r\n"
-            L"Esc：关闭鼠标模式\r\n"
-            L"W / A / S / D：移动鼠标光标\r\n"
-            L"J / K：鼠标左键 / 右键\r\n"
-            L"方向键：模拟垂直 / 水平滚轮",
+            Text().usage_text,
             SS_LEFT,
-            20,
-            130,
-            300,
-            110,
+            ScaleForDpi(20, dpi),
+            ScaleForDpi(130, dpi),
+            ScaleForDpi(300, dpi),
+            ScaleForDpi(110, dpi),
             hwnd);
 
-        CreateSettingsControl(0, L"BUTTON", L"保存", BS_DEFPUSHBUTTON,
-                              140, 256, 80, 30, hwnd, kButtonSaveId);
-        CreateSettingsControl(0, L"BUTTON", L"取消", 0,
-                              235, 256, 80, 30, hwnd, kButtonCancelId);
+        CreateSettingsControl(0, L"BUTTON", Text().save, BS_DEFPUSHBUTTON,
+                              ScaleForDpi(140, dpi), ScaleForDpi(256, dpi), ScaleForDpi(80, dpi), ScaleForDpi(30, dpi), hwnd, kButtonSaveId);
+        CreateSettingsControl(0, L"BUTTON", Text().cancel, 0,
+                              ScaleForDpi(235, dpi), ScaleForDpi(256, dpi), ScaleForDpi(80, dpi), ScaleForDpi(30, dpi), hwnd, kButtonCancelId);
         return 0;
     }
     case WM_COMMAND: {
@@ -659,6 +883,13 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
     case WM_CLOSE:
         DestroyWindow(hwnd);
         return 0;
+    case WM_DPICHANGED: {
+        RECT* suggested = reinterpret_cast<RECT*>(lparam);
+        SetWindowPos(hwnd, nullptr, suggested->left, suggested->top,
+                     suggested->right - suggested->left, suggested->bottom - suggested->top,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+        return 0;
+    }
     case WM_DESTROY:
         g_settings_window = nullptr;
         return 0;
@@ -675,9 +906,12 @@ void EnsureSettingsWindow() {
         return;
     }
 
-    g_settings_window = CreateWindowExW(WS_EX_TOOLWINDOW, kSettingsWindowClass, L"键盘鼠标模式设置 v1.0",
+    const UINT dpi = DpiForWindowOrSystem(nullptr);
+    const int window_width = ScaleForDpi(360, dpi);
+    const int window_height = ScaleForDpi(335, dpi);
+    g_settings_window = CreateWindowExW(WS_EX_TOOLWINDOW, kSettingsWindowClass, Text().settings_title,
                                         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-                                        CW_USEDEFAULT, CW_USEDEFAULT, 360, 335,
+                                        CW_USEDEFAULT, CW_USEDEFAULT, window_width, window_height,
                                         nullptr, nullptr, g_instance, nullptr);
     if (!g_settings_window) {
         return;
@@ -750,6 +984,15 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
             }
             return 0;
         }
+        case kMenuLanguageZhHans:
+            SetLanguage(0);
+            return 0;
+        case kMenuLanguageZhHant:
+            SetLanguage(1);
+            return 0;
+        case kMenuLanguageEn:
+            SetLanguage(2);
+            return 0;
         case kMenuExit:
             DestroyWindow(hwnd);
             return 0;
@@ -820,6 +1063,7 @@ bool IsAlreadyRunning() {
 
 int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     g_instance = instance;
+    EnableDpiAwareness();
 
     if (IsAlreadyRunning()) {
         MessageBoxW(nullptr, L"键盘鼠标模式已经在运行。", kAppName, MB_OK | MB_ICONINFORMATION);
@@ -830,7 +1074,7 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
     icc.dwSize = sizeof(icc);
     icc.dwICC = ICC_STANDARD_CLASSES;
     InitCommonControlsEx(&icc);
-    g_default_gui_font = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    g_default_gui_font = CreateUiFontForDpi(DpiForWindowOrSystem(nullptr));
 
     LoadConfig();
 

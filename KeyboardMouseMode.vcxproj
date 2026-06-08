@@ -45,6 +45,9 @@
       <SubSystem>Windows</SubSystem>
       <AdditionalDependencies>Comctl32.lib;Shell32.lib;User32.lib;Gdi32.lib;Advapi32.lib;Ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <Manifest>
+      <AdditionalManifestFiles>src\app.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -61,6 +64,9 @@
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>Comctl32.lib;Shell32.lib;User32.lib;Gdi32.lib;Advapi32.lib;Ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <Manifest>
+      <AdditionalManifestFiles>src\app.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp" />
@@ -75,6 +81,9 @@
     <Image Include="src\assets\app.ico" />
     <Image Include="src\assets\tray_off.ico" />
     <Image Include="src\assets\tray_on.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="src\app.manifest" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
