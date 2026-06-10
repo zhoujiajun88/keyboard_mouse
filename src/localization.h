@@ -23,6 +23,8 @@ struct LocalizedStrings {
     const wchar_t* speed_label;
     const wchar_t* startup_label;
     const wchar_t* version_label;
+    const wchar_t* github_label;
+    const wchar_t* usage_title;
     const wchar_t* usage_text;
     const wchar_t* save;
     const wchar_t* cancel;

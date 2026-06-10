@@ -20,7 +20,7 @@
 namespace {
 
 constexpr wchar_t kAppName[] = L"KeyboardMouseMode";
-constexpr wchar_t kAppVersion[] = L"1.2";
+constexpr wchar_t kAppVersion[] = L"1.3";
 constexpr wchar_t kMainWindowClass[] = L"KeyboardMouseModeWindow";
 constexpr wchar_t kToastWindowClass[] = L"KeyboardMouseModeToast";
 constexpr wchar_t kSettingsWindowClass[] = L"KeyboardMouseModeSettings";
@@ -42,8 +42,16 @@ constexpr int kEditSpeedId = 3001;
 constexpr int kCheckStartupId = 3002;
 constexpr int kButtonSaveId = 3003;
 constexpr int kButtonCancelId = 3004;
+constexpr int kSpinSpeedId = 3005;
+constexpr int kLabelSpeedId = 3007;
+constexpr int kLabelVersionId = 3008;
+constexpr int kLabelGithubId = 3009;
+constexpr int kLinkGithubId = 3010;
+constexpr int kUsageGroupId = 3011;
+constexpr int kUsageTextId = 3012;
 
 constexpr ULONGLONG kInitialNudgeOnlyMs = 20;
+constexpr wchar_t kGithubUrl[] = L"https://github.com/zhoujiajun88/keyboard_mouse";
 
 struct SpeedCurvePoint {
     ULONGLONG held_ms;
@@ -531,49 +539,137 @@ void ShowToast(const wchar_t* text) {
 
 void EnsureSettingsWindow();
 
+int ReadSpeedFromEdit(HWND hwnd) {
+    wchar_t buffer[32]{};
+    GetDlgItemTextW(hwnd, kEditSpeedId, buffer, 32);
+    return std::clamp(_wtoi(buffer), 100, 3000);
+}
+
+void WriteSpeedToEdit(HWND hwnd, int speed) {
+    const std::wstring text = std::to_wstring(std::clamp(speed, 100, 3000));
+    SetDlgItemTextW(hwnd, kEditSpeedId, text.c_str());
+}
+
+int ScaleSpacing(int value, UINT dpi) {
+    const UINT spacing_dpi = (std::min)(dpi, 144u);
+    return MulDiv(value, static_cast<int>(spacing_dpi), 96);
+}
+
+void MoveSettingsControl(HWND parent, int id, int x, int y, int width, int height) {
+    HWND control = GetDlgItem(parent, id);
+    if (control) {
+        MoveWindow(control, x, y, width, height, TRUE);
+    }
+}
+
+void LayoutSettingsWindow(HWND hwnd) {
+    const UINT dpi = Dpi::ForWindowOrSystem(hwnd);
+    RECT client{};
+    GetClientRect(hwnd, &client);
+    const int client_width = client.right - client.left;
+    const int client_height = client.bottom - client.top;
+
+    const int margin = ScaleSpacing(12, dpi);
+    const int row_gap = ScaleSpacing(6, dpi);
+    const int section_gap = ScaleSpacing(8, dpi);
+    const int label_height = ScaleSpacing(24, dpi);
+    const int control_height = ScaleSpacing(30, dpi);
+    const int button_width = ScaleSpacing(92, dpi);
+    const int button_height = ScaleSpacing(34, dpi);
+    const int button_gap = ScaleSpacing(10, dpi);
+    const int control_gap = ScaleSpacing(10, dpi);
+    const int min_label_width = ScaleSpacing(118, dpi);
+    const int spin_width = ScaleSpacing(22, dpi);
+    const int right = client_width - margin;
+
+    int y = margin;
+    const int content_width = (std::max)(1, right - margin);
+    const int speed_cluster_width = (std::min)(ScaleSpacing(250, dpi), (std::max)(ScaleSpacing(150, dpi), content_width / 2));
+    int speed_edit_x = right - speed_cluster_width;
+    if (speed_edit_x < margin + min_label_width + control_gap) {
+        speed_edit_x = margin + min_label_width + control_gap;
+    }
+    const int speed_edit_width = (std::max)(ScaleSpacing(80, dpi), right - speed_edit_x - spin_width);
+    const int speed_label_width = (std::max)(ScaleSpacing(90, dpi), speed_edit_x - margin - control_gap);
+    MoveSettingsControl(hwnd, kLabelSpeedId, margin, y + ScaleSpacing(2, dpi), speed_label_width, label_height);
+    MoveSettingsControl(hwnd, kEditSpeedId, speed_edit_x, y, speed_edit_width, control_height);
+    MoveSettingsControl(hwnd, kSpinSpeedId, speed_edit_x + speed_edit_width, y, spin_width, control_height);
+
+    y += control_height + row_gap;
+    const int half_content_width = content_width / 2;
+    MoveSettingsControl(hwnd, kCheckStartupId, margin, y, half_content_width, control_height);
+    MoveSettingsControl(hwnd, kLabelVersionId, margin + half_content_width + control_gap, y + ScaleSpacing(2, dpi),
+                        right - margin - half_content_width - control_gap, label_height);
+
+    y += control_height + row_gap;
+    const int github_label_width = ScaleSpacing(82, dpi);
+    MoveSettingsControl(hwnd, kLabelGithubId, margin, y + ScaleSpacing(2, dpi), github_label_width, label_height);
+    MoveSettingsControl(hwnd, kLinkGithubId, margin + github_label_width + control_gap, y + ScaleSpacing(1, dpi),
+                        right - margin - github_label_width - control_gap, label_height);
+
+    y += label_height + section_gap;
+    const int bottom_buttons_top = client_height - margin - button_height;
+    const int usage_height = (std::max)(1, bottom_buttons_top - y - section_gap);
+    MoveSettingsControl(hwnd, kUsageGroupId, margin, y, right - margin, usage_height);
+    MoveSettingsControl(hwnd, kUsageTextId, margin + ScaleSpacing(12, dpi), y + ScaleSpacing(24, dpi),
+                        right - margin - ScaleSpacing(24, dpi), (std::max)(1, usage_height - ScaleSpacing(32, dpi)));
+
+    MoveSettingsControl(hwnd, kButtonSaveId, right - button_width * 2 - button_gap, bottom_buttons_top, button_width, button_height);
+    MoveSettingsControl(hwnd, kButtonCancelId, right - button_width, bottom_buttons_top, button_width, button_height);
+}
+
 LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
     case WM_CREATE: {
-        const UINT dpi = Dpi::ForWindowOrSystem(hwnd);
-        CreateSettingsControl(0, L"STATIC", Text().speed_label, 0,
-                              Dpi::Scale(24, dpi), Dpi::Scale(24, dpi), Dpi::Scale(250, dpi), Dpi::Scale(28, dpi), hwnd);
+        CreateSettingsControl(0, L"STATIC", Text().speed_label, SS_LEFT,
+                              0, 0, 0, 0, hwnd, kLabelSpeedId);
 
         HWND edit = CreateSettingsControl(WS_EX_CLIENTEDGE, L"EDIT", L"", ES_NUMBER | ES_AUTOHSCROLL,
-                                          Dpi::Scale(300, dpi), Dpi::Scale(20, dpi), Dpi::Scale(150, dpi), Dpi::Scale(32, dpi), hwnd, kEditSpeedId);
-        std::wstring speed = std::to_wstring(g_config.move_speed_px_per_sec);
-        SetWindowTextW(edit, speed.c_str());
+                                          0, 0, 0, 0, hwnd, kEditSpeedId);
+        WriteSpeedToEdit(hwnd, g_config.move_speed_px_per_sec);
+        SendMessageW(edit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(6, 6));
+
+        HWND spin = CreateSettingsControl(0, UPDOWN_CLASS, L"", UDS_ARROWKEYS | UDS_HOTTRACK,
+                                          0, 0, 0, 0, hwnd, kSpinSpeedId);
+        SendMessageW(spin, UDM_SETRANGE32, 100, 3000);
+        SendMessageW(spin, UDM_SETPOS32, 0, g_config.move_speed_px_per_sec);
 
         HWND check = CreateSettingsControl(0, L"BUTTON", Text().startup_label, BS_AUTOCHECKBOX,
-                                           Dpi::Scale(24, dpi), Dpi::Scale(72, dpi), Dpi::Scale(320, dpi), Dpi::Scale(30, dpi), hwnd, kCheckStartupId);
+                                           0, 0, 0, 0, hwnd, kCheckStartupId);
         SendMessageW(check, BM_SETCHECK, g_config.startup_enabled ? BST_CHECKED : BST_UNCHECKED, 0);
 
-        CreateSettingsControl(0, L"STATIC", Text().version_label, 0,
-                              Dpi::Scale(24, dpi), Dpi::Scale(118, dpi), Dpi::Scale(420, dpi), Dpi::Scale(28, dpi), hwnd);
+        CreateSettingsControl(0, L"STATIC", Text().version_label, SS_LEFT,
+                              0, 0, 0, 0, hwnd, kLabelVersionId);
+        CreateSettingsControl(0, L"STATIC", Text().github_label, SS_LEFT,
+                              0, 0, 0, 0, hwnd, kLabelGithubId);
+        CreateSettingsControl(0, WC_LINK, L"<a href=\"https://github.com/zhoujiajun88/keyboard_mouse\">https://github.com/zhoujiajun88/keyboard_mouse</a>",
+                              WS_TABSTOP, 0, 0, 0, 0, hwnd, kLinkGithubId);
 
+        CreateSettingsControl(0, L"BUTTON", Text().usage_title, BS_GROUPBOX,
+                              0, 0, 0, 0, hwnd, kUsageGroupId);
         CreateSettingsControl(
             0,
             L"STATIC",
             Text().usage_text,
             SS_LEFT,
-            Dpi::Scale(24, dpi),
-            Dpi::Scale(158, dpi),
-            Dpi::Scale(470, dpi),
-            Dpi::Scale(170, dpi),
-            hwnd);
+            0,
+            0,
+            0,
+            0,
+            hwnd,
+            kUsageTextId);
 
         CreateSettingsControl(0, L"BUTTON", Text().save, BS_DEFPUSHBUTTON,
-                              Dpi::Scale(305, dpi), Dpi::Scale(360, dpi), Dpi::Scale(90, dpi), Dpi::Scale(34, dpi), hwnd, kButtonSaveId);
+                              0, 0, 0, 0, hwnd, kButtonSaveId);
         CreateSettingsControl(0, L"BUTTON", Text().cancel, 0,
-                              Dpi::Scale(410, dpi), Dpi::Scale(360, dpi), Dpi::Scale(90, dpi), Dpi::Scale(34, dpi), hwnd, kButtonCancelId);
+                              0, 0, 0, 0, hwnd, kButtonCancelId);
+        LayoutSettingsWindow(hwnd);
         return 0;
     }
     case WM_COMMAND: {
         const int id = LOWORD(wparam);
         if (id == kButtonSaveId) {
-            wchar_t buffer[32]{};
-            GetDlgItemTextW(hwnd, kEditSpeedId, buffer, 32);
-            int speed = _wtoi(buffer);
-            speed = std::clamp(speed, 100, 3000);
+            const int speed = ReadSpeedFromEdit(hwnd);
             const bool startup = SendDlgItemMessageW(hwnd, kCheckStartupId, BM_GETCHECK, 0, 0) == BST_CHECKED;
             g_config.move_speed_px_per_sec = speed;
             if (ConfigManager::SetStartupEnabled(startup)) {
@@ -590,6 +686,20 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
         }
         break;
     }
+    case WM_NOTIFY: {
+        const NMHDR* header = reinterpret_cast<NMHDR*>(lparam);
+        if (header && header->idFrom == kSpinSpeedId && header->code == UDN_DELTAPOS) {
+            const NMUPDOWN* spin = reinterpret_cast<NMUPDOWN*>(lparam);
+            WriteSpeedToEdit(hwnd, ReadSpeedFromEdit(hwnd) + (spin->iDelta < 0 ? 50 : -50));
+            return TRUE;
+        }
+        if (header && header->idFrom == kLinkGithubId &&
+            (header->code == NM_CLICK || header->code == NM_RETURN)) {
+            ShellExecuteW(hwnd, L"open", kGithubUrl, nullptr, nullptr, SW_SHOWNORMAL);
+            return 0;
+        }
+        break;
+    }
     case WM_CTLCOLORSTATIC: {
         HDC hdc = reinterpret_cast<HDC>(wparam);
         SetBkMode(hdc, TRANSPARENT);
@@ -599,11 +709,15 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
     case WM_CLOSE:
         DestroyWindow(hwnd);
         return 0;
+    case WM_SIZE:
+        LayoutSettingsWindow(hwnd);
+        return 0;
     case WM_DPICHANGED: {
         RECT* suggested = reinterpret_cast<RECT*>(lparam);
         SetWindowPos(hwnd, nullptr, suggested->left, suggested->top,
                      suggested->right - suggested->left, suggested->bottom - suggested->top,
                      SWP_NOZORDER | SWP_NOACTIVATE);
+        LayoutSettingsWindow(hwnd);
         return 0;
     }
     case WM_DESTROY:
@@ -622,23 +736,39 @@ void EnsureSettingsWindow() {
         return;
     }
 
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO monitor_info{sizeof(monitor_info)};
+    GetMonitorInfoW(monitor, &monitor_info);
+
     const UINT dpi = Dpi::ForWindowOrSystem(nullptr);
-    const int window_width = Dpi::Scale(540, dpi);
-    const int window_height = Dpi::Scale(455, dpi);
-    g_settings_window = CreateWindowExW(WS_EX_TOOLWINDOW, kSettingsWindowClass, Text().settings_title,
-                                        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+    const int screen_margin = Dpi::Scale(16, dpi);
+    const int work_width = static_cast<int>(monitor_info.rcWork.right - monitor_info.rcWork.left);
+    const int work_height = static_cast<int>(monitor_info.rcWork.bottom - monitor_info.rcWork.top);
+    const int available_width = (std::max)(1, work_width - screen_margin * 2);
+    const int available_height = (std::max)(1, work_height - screen_margin * 2);
+    const int window_width = (std::min)(Dpi::Scale(560, dpi), available_width);
+    const int window_height = (std::min)(Dpi::Scale(430, dpi), available_height);
+    constexpr DWORD settings_window_style = WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MINIMIZEBOX & ~WS_MAXIMIZEBOX;
+    g_settings_window = CreateWindowExW(0, kSettingsWindowClass, Text().settings_title,
+                                        settings_window_style,
                                         CW_USEDEFAULT, CW_USEDEFAULT, window_width, window_height,
                                         nullptr, nullptr, g_instance, nullptr);
     if (!g_settings_window) {
         return;
     }
+    SendMessageW(g_settings_window, WM_SETICON, ICON_BIG,
+                 reinterpret_cast<LPARAM>(LoadAppIcon(IDI_APP, GetSystemMetrics(SM_CXICON))));
+    SendMessageW(g_settings_window, WM_SETICON, ICON_SMALL,
+                 reinterpret_cast<LPARAM>(LoadAppIcon(IDI_APP, GetSystemMetrics(SM_CXSMICON))));
 
     RECT rect{};
     GetWindowRect(g_settings_window, &rect);
     const int width = rect.right - rect.left;
     const int height = rect.bottom - rect.top;
-    const int x = GetSystemMetrics(SM_CXSCREEN) / 2 - width / 2;
-    const int y = GetSystemMetrics(SM_CYSCREEN) / 2 - height / 2;
+    const int x = monitor_info.rcWork.left + ((monitor_info.rcWork.right - monitor_info.rcWork.left) - width) / 2;
+    const int y = monitor_info.rcWork.top + ((monitor_info.rcWork.bottom - monitor_info.rcWork.top) - height) / 2;
     SetWindowPos(g_settings_window, HWND_TOP, x, y, width, height, SWP_SHOWWINDOW);
 }
 
@@ -759,6 +889,7 @@ bool RegisterWindowClasses() {
     settings_class.hInstance = g_instance;
     settings_class.lpszClassName = kSettingsWindowClass;
     settings_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    settings_class.hIcon = LoadAppIcon(IDI_APP, GetSystemMetrics(SM_CXICON));
     settings_class.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     if (!RegisterClassW(&settings_class)) {
         return false;
@@ -788,7 +919,7 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
 
     INITCOMMONCONTROLSEX icc{};
     icc.dwSize = sizeof(icc);
-    icc.dwICC = ICC_STANDARD_CLASSES;
+    icc.dwICC = ICC_STANDARD_CLASSES | ICC_LINK_CLASS;
     InitCommonControlsEx(&icc);
     g_default_gui_font = Dpi::CreateUiFont(Dpi::ForWindowOrSystem(nullptr));
 

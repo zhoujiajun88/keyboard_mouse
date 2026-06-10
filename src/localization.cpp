@@ -14,16 +14,17 @@ const LocalizedStrings& Localization::Text(Language language) {
         L"键盘鼠标模式：关闭",
         L"鼠标模式开启",
         L"鼠标模式关闭",
-        L"键盘鼠标模式设置 v1.2",
-        L"鼠标移动速度 (px/s)：",
+        L"键盘鼠标模式设置 v1.3",
+        L"鼠标移动速度 (px/s)",
         L"开机自启动",
-        L"版本：1.2",
-        L"使用说明：\r\n"
-        L"Ctrl + Alt + M：开启 / 关闭鼠标模式\r\n"
-        L"Esc：关闭鼠标模式\r\n"
-        L"W / A / S / D：移动鼠标光标\r\n"
-        L"J / K：鼠标左键 / 右键\r\n"
-        L"方向键：模拟垂直 / 水平滚轮",
+        L"版本：1.3",
+        L"项目地址",
+        L"使用说明",
+        L"• Ctrl + Alt + M：开启 / 关闭鼠标模式\r\n"
+        L"• Esc：关闭鼠标模式\r\n"
+        L"• W / A / S / D：移动鼠标光标\r\n"
+        L"• J / K：鼠标左键 / 右键\r\n"
+        L"• 方向键：模拟垂直 / 水平滚轮",
         L"保存",
         L"取消",
     };
@@ -38,16 +39,17 @@ const LocalizedStrings& Localization::Text(Language language) {
         L"鍵盤滑鼠模式：關閉",
         L"滑鼠模式開啟",
         L"滑鼠模式關閉",
-        L"鍵盤滑鼠模式設定 v1.2",
-        L"滑鼠移動速度 (px/s)：",
+        L"鍵盤滑鼠模式設定 v1.3",
+        L"滑鼠移動速度 (px/s)",
         L"開機自動啟動",
-        L"版本：1.2",
-        L"使用說明：\r\n"
-        L"Ctrl + Alt + M：開啟 / 關閉滑鼠模式\r\n"
-        L"Esc：關閉滑鼠模式\r\n"
-        L"W / A / S / D：移動滑鼠游標\r\n"
-        L"J / K：滑鼠左鍵 / 右鍵\r\n"
-        L"方向鍵：模擬垂直 / 水平滾輪",
+        L"版本：1.3",
+        L"專案位址",
+        L"使用說明",
+        L"• Ctrl + Alt + M：開啟 / 關閉滑鼠模式\r\n"
+        L"• Esc：關閉滑鼠模式\r\n"
+        L"• W / A / S / D：移動滑鼠游標\r\n"
+        L"• J / K：滑鼠左鍵 / 右鍵\r\n"
+        L"• 方向鍵：模擬垂直 / 水平滾輪",
         L"儲存",
         L"取消",
     };
@@ -62,16 +64,17 @@ const LocalizedStrings& Localization::Text(Language language) {
         L"Keyboard mouse mode: off",
         L"Mouse mode on",
         L"Mouse mode off",
-        L"Keyboard Mouse Mode Settings v1.2",
-        L"Mouse speed (px/s):",
+        L"Keyboard Mouse Mode Settings v1.3",
+        L"Mouse speed (px/s)",
         L"Start with Windows",
-        L"Version: 1.2",
-        L"Usage:\r\n"
-        L"Ctrl + Alt + M: turn mouse mode on / off\r\n"
-        L"Esc: turn mouse mode off\r\n"
-        L"W / A / S / D: move cursor\r\n"
-        L"J / K: left / right mouse button\r\n"
-        L"Arrow keys: vertical / horizontal scrolling",
+        L"Version: 1.3",
+        L"GitHub",
+        L"Usage",
+        L"• Ctrl + Alt + M: turn mouse mode on / off\r\n"
+        L"• Esc: turn mouse mode off\r\n"
+        L"• W / A / S / D: move cursor\r\n"
+        L"• J / K: left / right mouse button\r\n"
+        L"• Arrow keys: vertical / horizontal scrolling",
         L"Save",
         L"Cancel",
     };

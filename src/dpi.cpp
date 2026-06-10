@@ -40,7 +40,8 @@ HFONT Dpi::CreateUiFont(UINT dpi) {
     metrics.cbSize = sizeof(metrics);
     if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, metrics.cbSize, &metrics, 0)) {
         metrics.lfMessageFont.lfHeight = -MulDiv(11, static_cast<int>(dpi), 72);
-        metrics.lfMessageFont.lfWeight = FW_MEDIUM;
+        metrics.lfMessageFont.lfWeight = FW_NORMAL;
+        metrics.lfMessageFont.lfQuality = CLEARTYPE_QUALITY;
         return CreateFontIndirectW(&metrics.lfMessageFont);
     }
     return reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
